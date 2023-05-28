@@ -1,63 +1,76 @@
-[![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/big-data-europe/Lobby)
+# Hadoop on Docker
 
-# Changes
-
-Version 2.0.0 introduces uses wait_for_it script for the cluster startup
-
-# Hadoop Docker
-
-## Supported Hadoop Versions
-See repository branches for supported hadoop versions
-
-## Quick Start
-
-To deploy an example HDFS cluster, run:
+## Requirement
+Docker Desktop is required, and to check that it is correctly installed, you can run the following command:
 ```
-  docker-compose up
+docker run hello-world
 ```
-
-Run example wordcount job:
+## Start Hadoop Cluster
+Go to the terminal and clone the git repository to your computer:
 ```
-  make wordcount
+git clone https://github.com/arminZolfaghari/docker-hadoop.git
 ```
-
-Or deploy in swarm:
+And get to the docker-hadoop directory and run the following command to create containers:
 ```
-docker stack deploy -c docker-compose-v3.yml hadoop
+docker-compose up -d
 ```
+It takes a few minutes to start the whole Hadoop cluster completely.
 
-`docker-compose` creates a docker network that can be found by running `docker network list`, e.g. `dockerhadoop_default`.
+Use `docker ps` to verify the containers are up.
 
-Run `docker network inspect` on the network (e.g. `dockerhadoop_default`) to find the IP the hadoop interfaces are published on. Access these interfaces with the following URLs:
+## Running Python MapReduce function
+We will use the word count example for the MapReduce function. You can see the MapReduce codes and input text file [here](https://github.com/arminZolfaghari/docker-hadoop/tree/master/mapreduce%20codes).
 
-* Namenode: http://<dockerhadoop_IP_address>:9870/dfshealth.html#tab-overview
-* History server: http://<dockerhadoop_IP_address>:8188/applicationhistory
-* Datanode: http://<dockerhadoop_IP_address>:9864/
-* Nodemanager: http://<dockerhadoop_IP_address>:8042/node
-* Resource manager: http://<dockerhadoop_IP_address>:8088/
-
-## Configure Environment Variables
-
-The configuration parameters can be specified in the hadoop.env file or as environmental variables for specific services (e.g. namenode, datanode etc.):
+### How to put files or directory in containers from the host computer
+You can copy the local directory to the container with following command:
 ```
-  CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+docker cp LOCAL_PATH CONTAINER:PATH
+```
+for example, we put `mapreduce codes` directory in namenode container:
+``` 
+docker cp ./mapreduce\ codes namenode:codes
 ```
 
-CORE_CONF corresponds to core-site.xml. fs_defaultFS=hdfs://namenode:8020 will be transformed into:
+### How to put files in HDFS from the container
+First of all, you must go to the namenode container:
 ```
-  <property><name>fs.defaultFS</name><value>hdfs://namenode:8020</value></property>
+docker exec -it namenode bash
 ```
-To define dash inside a configuration parameter, use triple underscore, such as YARN_CONF_yarn_log___aggregation___enable=true (yarn-site.xml):
+If you run `ls` command, you should find `codes` directory in the namenode container.
+The MapReduce program access files from the Hadoop Distributed File System (HDFS). Run the following to transfer the input file text to HDFS:
 ```
-  <property><name>yarn.log-aggregation-enable</name><value>true</value></property>
+hadoop fs -mkdir -p input
+hdfs dfs -put ./codes/input.txt input
+```
+To check you can see https://localhost:9870 and select `Utilities`, then select `Browse the file system`
+
+### Run Python MapReduce in namenode
+** Note: Because Hadoop runs on Apache server which is built in Java, the program takes a Java JAR file as an input. To execute Python in Hadoop, we will need to use the Hadoop Streaming library to pipe the Python executable into the Java framework **
+
+Use `find / -name 'hadoop-streaming*.jar` to locate the hadoop string library JAR file. The path should look something like `PATH/hadoop-straming-3.2.1.jar`
+Finally, we can execute the MapReduce program with command:
+```
+hadoop jar /opt/hadoop-3.2.1/share/hadoop/tools/lib/hadoop-streaming-3.2.1.jar -file ./codes/mapper.py \
+-mapper "python3 mapper.py" -file ./codes/reducer.py -reducer "python3 reducer.py" \
+-input input/input.txt -output output/PATH
+```
+For see the result:
+```
+hdfs dfs -cat output/PATH/part-00000
+```
+Also, you can see the result at https://localhost:9870. Select `Utilities`, then select `Browse the file system`.
+
+### Shut down Hadoop Cluster
+To safely shut down the cluster and remove containers, run:
+```
+docker-compose down
 ```
 
-The available configurations are:
-* /etc/hadoop/core-site.xml CORE_CONF
-* /etc/hadoop/hdfs-site.xml HDFS_CONF
-* /etc/hadoop/yarn-site.xml YARN_CONF
-* /etc/hadoop/httpfs-site.xml HTTPFS_CONF
-* /etc/hadoop/kms-site.xml KMS_CONF
-* /etc/hadoop/mapred-site.xml  MAPRED_CONF
+## Credits
+This repository is inspired by [@big-data-europe](https://github.com/big-data-europe/docker-hadoop).
 
-If you need to extend some other configuration file, refer to base/entrypoint.sh bash script.
+## Contact
+If you have any questions, feel free to ask me: </br>
+:envelope_with_arrow:	arminzolfagharid@gmail.com
+
+
